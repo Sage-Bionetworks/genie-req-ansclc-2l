@@ -12,7 +12,8 @@ mut %<>% rename_all(tolower)
 onco_gene_feat <- mut %>%
   select(
     sample_id = tumor_sample_barcode,
-    hugo_symbol
+    hugo_symbol,
+    hgvsp_short
   ) %>%
   group_by(sample_id, hugo_symbol) %>%
   summarize(altered = T, .groups = 'drop')
@@ -34,6 +35,17 @@ onco_gene_feat_mat[is.na(onco_gene_feat_mat)] <- FALSE
 onco_comb_mat <- combine_testing_and_alteration_matrices(
   testing_mat,
   onco_gene_feat_mat
+)
+
+
+# Need a feature for KRAS G12C speicfically too:
+mut %>%
+  filter(hugo_symbol %in% 'KRAS' & hgvsp_short %in% "p.G12D") %>%
+  select(sample_id = tumor_sample_barcode) %>%
+  mutate(KRAS_G12D = T)
+
+cli_abort(
+  "Pad the dataframe with records from the matrix, selec tin order, then column bind, fix the testing 0/NA using KRAS feature, good to go."
 )
 
 readr::write_rds(

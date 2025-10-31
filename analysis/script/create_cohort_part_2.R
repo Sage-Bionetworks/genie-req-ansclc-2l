@@ -15,8 +15,9 @@ index_therapies <- readr::read_rds(
 lot <- readr::read_rds(
   here('data', 'cohort', 'lot.rds')
 )
-# rad <- readr::read_csv(
-#   here('data-raw', 'cohort'
+rad <- readr::read_csv(
+  here('data-raw', 'bpc', 'NSCLC', '3.1-consortium', 'ca_radtx_dataset.csv')
+)
 
 prev_ther_checks <- lot %>%
   group_by(record_id, ca_seq) %>%
@@ -48,8 +49,8 @@ cohort %<>%
     by = c('record_id', 'ca_seq')
   )
 
-cohort %<>% filter(no_inv_to_index)
-flow_track %<>% flow_record_helper(cohort, "No investigational before index", .)
+cohort %<>% filter(!is.na(index_line))
+flow_track %<>% flow_record_helper(cohort, "Has index therapy", .)
 
 cohort %<>%
   mutate(
@@ -61,8 +62,54 @@ cohort %<>%
 cohort %<>% filter(cpt_within_index_window)
 flow_track %<>% flow_record_helper(cohort, "NGS within window", .)
 
-# cohort %<>% filter(no_tki_to_index)
-# flow_track %<>% flow_record_helper(cohort, "No TKI before index", .)
-#
-# cohort %<>% filter(no_inv_to_index)
-# flow_track %<>% flow_record_helper(cohort, "No investigational before index", .)
+cohort %<>% filter(no_tki_to_index)
+flow_track %<>% flow_record_helper(cohort, "No TKI before index", .)
+
+cohort %<>% filter(no_inv_to_index)
+flow_track %<>% flow_record_helper(cohort, "No investigational before index", .)
+
+
+# Could possibly put this in a separate script..
+rad_overlap <- rad %>%
+  # no idea why ther are missing radiation durations but...
+  replace_na(list(rt_rt_int = 0)) %>%
+  mutate(
+    dx_rt_end_days = dx_rt_start_days + rt_rt_int
+  ) %>%
+  left_join(
+    select(cohort, record_id, ca_seq, dob_ca_dx_days, index_dob_reg_start_int),
+    .,
+    by = c('record_id', 'ca_seq'),
+    relationship = 'one-to-many'
+  )
+
+rad_overlap %<>%
+  mutate(
+    dob_rt_start_int = dx_rt_start_days + dob_ca_dx_days,
+    dob_rt_end_int = dx_rt_end_days + dob_ca_dx_days,
+    rt_start_index_days = index_dob_reg_start_int - dob_rt_start_int,
+    rt_end_index_days = index_dob_reg_start_int - dob_rt_end_int,
+    overlap_case_1 = rt_start_index_days >= 0 & rt_start_index_days <= 21,
+    overlap_case_2 = rt_end_index_days >= 0 & rt_end_index_days <= 21,
+    overlap = overlap_case_1 | overlap_case_2
+  )
+
+rad_overlap_sum <- rad_overlap %>%
+  group_by(record_id, ca_seq) %>%
+  summarize(no_rad_overlap = !any(overlap, na.rm = T))
+
+cohort %<>%
+  left_join(., rad_overlap_sum, by = c('record_id', 'ca_seq')) %>%
+  replace_na(list(no_rad_overlap = TRUE))
+
+cohort %<>% filter(no_rad_overlap)
+flow_track %<>% flow_record_helper(cohort, "No radiation in window", .)
+
+readr::write_rds(
+  cohort,
+  here('data', 'cohort', 'cohort.rds')
+)
+readr::write_rds(
+  flow_track,
+  here('data', 'cohort', 'flow_track.rds')
+)

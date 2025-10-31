@@ -39,16 +39,43 @@ onco_comb_mat <- combine_testing_and_alteration_matrices(
 
 
 # Need a feature for KRAS G12C speicfically too:
-mut %>%
+custom_features <- mut %>%
   filter(hugo_symbol %in% 'KRAS' & hgvsp_short %in% "p.G12D") %>%
   select(sample_id = tumor_sample_barcode) %>%
-  mutate(KRAS_G12D = T)
+  mutate(KRAS_G12D = T) %>%
+  left_join(
+    tibble(sample_id = rownames(onco_comb_mat)),
+    .,
+    by = 'sample_id'
+  )
 
-cli_abort(
-  "Pad the dataframe with records from the matrix, selec tin order, then column bind, fix the testing 0/NA using KRAS feature, good to go."
+onco_comb_df <- full_join(
+  as_tibble(onco_comb_mat, rownames = 'sample_id'),
+  custom_features,
+  by = 'sample_id'
 )
 
+onco_comb_df %<>%
+  mutate(
+    KRAS_G12D = case_when(
+      is.na(KRAS) ~ NA,
+      # if kras is true or false the gene was tested.
+      KRAS %in% c(TRUE, FALSE) & KRAS_G12D %in% NA ~ FALSE,
+      T ~ KRAS_G12D
+    )
+  )
+
+# I think it'll be useful to have record id in here too:
+
+onco_comb_df %<>%
+  left_join(
+    .,
+    select(samp, sample_id, record_id = patient_id),
+    by = 'sample_id'
+  ) %>%
+  relocate(record_id, .after = sample_id)
+
 readr::write_rds(
-  onco_comb_mat,
-  here('data', 'genomic', 'mut_mat_lim.rds')
+  onco_comb_df,
+  here('data', 'genomic', 'sample_gene_test_pos.rds')
 )

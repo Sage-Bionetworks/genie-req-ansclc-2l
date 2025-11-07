@@ -3,6 +3,8 @@ library(purrr)
 library(here)
 purrr::walk(.x = fs::dir_ls(here("R")), .f = source)
 
+library(genzplyr)
+
 ca_ind <- readr::read_csv(
   here(
     'data-raw',
@@ -51,7 +53,7 @@ sample_gene <- readr::read_rds(
 
 # first we take a flattening approach to multiple samples.
 gene_elig <- sample_gene %>%
-  filter(sample_id %in% cohort$cpt_genie_sample_id) %>%
+  yeet(sample_id %in% cohort$cpt_genie_sample_id) %>%
   mutate(
     # The awkward patterns here deal with NAs.
     # Currently we don't care if someone was tested for ALK, EGFR, etc.
@@ -74,16 +76,16 @@ cohort <- gene_elig %>%
     relationship = 'many-to-one'
   )
 
-cohort %<>% filter(KRAS_G12D)
+cohort %<>% yeet(KRAS_G12D)
 
 flow_track %<>% flow_record_helper(cohort, "KRAS p.G12D", .)
 
-cohort %<>% filter(geno_eligible)
+cohort %<>% yeet(geno_eligible)
 
 flow_track %<>% flow_record_helper(cohort, "No EGFR or ALK detected", .)
 
 dx_stage <- ca_ind %>%
-  filter(stage_dx %in% c("Stage III", "Stage IV")) %>%
+  yeet(stage_dx %in% c("Stage III", "Stage IV")) %>%
   mutate(
     stage_detailed_comb = case_when(
       !is.na(best_ajcc_stage_cd) ~ best_ajcc_stage_cd,
@@ -101,7 +103,7 @@ cohort <- left_join(
 
 # This is inductive - I just looked at the available codes first.
 cohort %<>%
-  filter(
+  yeet(
     stage_dx %in% "Stage IV" | stage_detailed_comb %in% c("3B", "3C", "IIIB")
   )
 
